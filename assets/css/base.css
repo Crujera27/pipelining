@@ -1,0 +1,12 @@
+body {
+  background: #f3f4f7;
+}
+
+.mono {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.table td,
+.table th {
+  vertical-align: middle;
+}

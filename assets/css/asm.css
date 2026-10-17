@@ -1,0 +1,112 @@
+.asm {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.85rem;
+  height: 62vh;
+  overflow: auto;
+  position: relative;
+  padding: 0.5rem 0;
+  border-radius: 0 0 6px 6px;
+}
+
+.asm-row {
+  white-space: pre;
+  padding: 0 0.75rem;
+  border-left: 3px solid transparent;
+  line-height: 1.6;
+}
+
+.asm-row .a {
+  color: #858585;
+  margin-right: 1.5ch;
+}
+
+.asm-row .mn {
+  color: #569cd6;
+  font-weight: bold;
+  display: inline-block;
+  min-width: 7ch;
+}
+
+.asm-row .rg {
+  color: #9cdcfe;
+}
+
+.asm-row .vn {
+  color: #dcdcaa;
+}
+
+.asm-row .nm {
+  color: #b5cea8;
+}
+
+.asm-row .kw {
+  color: #c586c0;
+}
+
+.asm-row .cm {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.asm-row .lb {
+  color: #4ec9b0;
+  font-weight: bold;
+}
+
+.asm-row .dt {
+  color: #ce9178;
+}
+
+.asm-row.cur {
+  background: #094771;
+  border-left-color: #4fc1ff;
+}
+
+.asm-row.fault {
+  background: #5a1d1d;
+  border-left-color: #f14c4c;
+}
+
+.asm-row .stg {
+  display: inline-block;
+  min-width: 4.4ch;
+  margin-right: 1ch;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  line-height: 1.4;
+  color: #fff;
+}
+
+.asm-row .stg:empty::before {
+  content: "\00a0";
+}
+
+.asm-row .stg-IF {
+  background: #8e5fc0;
+}
+
+.asm-row .stg-ID {
+  background: #3273dc;
+}
+
+.asm-row .stg-EX {
+  background: #e08a1e;
+}
+
+.asm-row .stg-MEM {
+  background: #c9a400;
+  color: #111;
+}
+
+.asm-row .stg-WB {
+  background: #2f9e57;
+}
+
+.asm-row .stg-wait {
+  background: #d32f2f;
+  color: #fff;
+}

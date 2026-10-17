@@ -1,0 +1,128 @@
+.ph {
+  color: #8a8a8a;
+  font-style: italic;
+  padding: 0.5rem 0.75rem;
+  display: block;
+}
+
+.console {
+  background: #111;
+  color: #b5f5b5;
+  font-family: Consolas, "Courier New", monospace;
+  min-height: 5rem;
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  margin: 0;
+}
+
+.console .err {
+  color: #ff8a8a;
+}
+
+.stack-wrap {
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.row-free {
+  opacity: 0.45;
+}
+
+.drawers {
+  border-collapse: separate;
+  border-spacing: 0 4px;
+}
+
+.drawers td {
+  border: none;
+  padding: 0.35rem 0.5rem;
+}
+
+.drawers td:first-child {
+  border-left: 5px solid transparent;
+  border-radius: 6px 0 0 6px;
+}
+
+.drawers td:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.drawers tr.z-ret td {
+  background: #fde4e4;
+}
+
+.drawers tr.z-ret td:first-child {
+  border-left-color: #e05252;
+}
+
+.drawers tr.z-ebp td {
+  background: #e3e8ff;
+}
+
+.drawers tr.z-ebp td:first-child {
+  border-left-color: #4a5fd6;
+}
+
+.drawers tr.z-var td {
+  background: #dff5e5;
+}
+
+.drawers tr.z-var td:first-child {
+  border-left-color: #2f9e57;
+}
+
+.drawers tr.z-arg td {
+  background: #fff1cf;
+}
+
+.drawers tr.z-arg td:first-child {
+  border-left-color: #d99a1c;
+}
+
+.drawers tr.mem-chg td {
+  background: #fff3a0;
+  box-shadow: inset 0 2px 0 #e0b800, inset 0 -2px 0 #e0b800;
+}
+
+.reg-chg td {
+  background: #fff3a0 !important;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend i {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+}
+
+.lg-ret {
+  background: #e05252;
+}
+
+.lg-ebp {
+  background: #4a5fd6;
+}
+
+.lg-var {
+  background: #2f9e57;
+}
+
+.lg-arg {
+  background: #d99a1c;
+}
