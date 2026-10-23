@@ -1,8 +1,24 @@
 <?php
+// Copyright (c) 2026 Ángel Crujera <me@crujera.net>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 function translate(string $code): array
 {
     if (strlen($code) > 4000) {
-        return ['ok' => false, 'errors' => ['El código supera el límite de 4000 caracteres']];
+           return ['ok' => false, 'errors' => ['El código supera el límite de 4000 caracteres']];
     }
 
     $errors = [];
@@ -31,7 +47,10 @@ function translate(string $code): array
                 $stmts[] = ['k' => 'assign', 'name' => $name, 'e' => $e, 'text' => $line, 'n' => $n];
             } elseif (preg_match('/^print\s+(.+)$/i', $line, $m)) {
                 $e = parseExpr($m[1], $vars, $n);
-                $stmts[] = ['k' => 'print', 'e' => $e, 'text' => $line, 'n' => $n];
+                $stmts[] = ['k' => 'printf', 'format' => "%d\n", 'args' => [$e], 'text' => $line, 'n' => $n];
+            } elseif (preg_match('/^printf\s+(.+)$/i', $line, $m)) {
+                $p = parsePrintf($m[1], $vars, $n);
+                $stmts[] = ['k' => 'printf', ...$p, 'text' => $line, 'n' => $n];
             } else {
                 throw new InvalidArgumentException("Línea $n: instrucción no reconocida '$line'");
             }
@@ -48,10 +67,24 @@ function translate(string $code): array
     }
 
     $frame = 4 * count($vars);
-    $hasPrint = false;
-    foreach ($stmts as $s) {
-        $s['k'] === 'print' ? $hasPrint = true : null;
+    $hasPrint = count(array_filter($stmts, fn(array $s): bool => $s['k'] === 'printf')) > 0;
+    $formats = [];
+    $formatAddresses = [];
+    $nextFormatAddress = FMT_ADDR;
+    $maxPrintfArgs = 0;
+    foreach ($stmts as &$s) {
+        if ($s['k'] !== 'printf') {
+            continue;
+        }
+        $maxPrintfArgs = max($maxPrintfArgs, count($s['args']));
+        if (!isset($formatAddresses[$s['format']])) {
+            $formatAddresses[$s['format']] = $nextFormatAddress;
+            $formats[(string)$nextFormatAddress] = $s['format'];
+            $nextFormatAddress += 0x100;
+        }
+        $s['formatAddr'] = $formatAddresses[$s['format']];
     }
+    unset($s);
 
     $g = new Gen($vars);
     $g->line('comment', '; int __cdecl main()');
@@ -78,7 +111,7 @@ function translate(string $code): array
         if ($s['k'] === 'assign') {
             $g->emitAssign($s);
         } else {
-            $g->emitPrint($s);
+            $g->emitPrintf($s);
         }
     }
 
@@ -93,8 +126,10 @@ function translate(string $code): array
     $g->ins('retn', '', 1, ['op' => 'retn'],
         'Retorna al llamador: saca la dirección de retorno de la pila y salta a ella.', $epi);
     $g->line('label', '_main endp');
-    if ($hasPrint) {
-        $g->line('data', "aD db '%d',0Ah,0", '.rdata', FMT_ADDR);
+    foreach ($formatAddresses as $format => $address) {
+        $label = 'a' . strtoupper(dechex($address));
+        $display = addcslashes($format, "\\\"'\n\r\t");
+        $g->line('data', $label . " db '" . $display . "',0", '.rdata', $address);
     }
 
     $varList = [];
@@ -111,6 +146,8 @@ function translate(string $code): array
             'retAddr' => RET_ADDR,
             'frame' => $frame,
             'hasPrint' => $hasPrint,
+            'maxPrintfArgs' => $maxPrintfArgs,
+            'formats' => $formats,
             'vars' => $varList,
         ],
     ];

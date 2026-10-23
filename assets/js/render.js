@@ -1,3 +1,20 @@
+/**
+ * Copyright (c) 2026 Ángel Crujera <me@crujera.net>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { state } from "./state.js";
 import { STAGES, IDX } from "./config.js";
 import { $, esc, hex32, offText, varLabel } from "./utils.js";
@@ -102,7 +119,12 @@ export function renderStack() {
   const m = state.prog.meta;
   const top = m.esp0;
   const ebp0 = top - 4;
-  const bottom = ebp0 - m.frame - (m.hasPrint ? 8 : 0);
+  const mainFrameBottom = ebp0 - m.frame;
+  const argCount = m.maxPrintfArgs || 0;
+  const formatAddress = mainFrameBottom - 4 * (argCount + 1);
+  const printfReturnAddress = formatAddress - 4;
+  const printfEbp = printfReturnAddress - 4;
+  const bottom = argCount ? printfEbp : mainFrameBottom;
   let h = "";
   for (let a = top; a >= bottom; a -= 4) {
     let label = "";
@@ -119,12 +141,22 @@ export function renderStack() {
       label = v ? varLabel(v.n) + " (" + v.name + ")" : "";
       zone = "z-var";
       showDec = true;
-    } else if (a === ebp0 - m.frame - 4) {
-      label = "Argumento: valor a imprimir";
+    } else if (argCount && a < mainFrameBottom && a >= mainFrameBottom - 4 * argCount) {
+      const position = Math.round((mainFrameBottom - a) / 4);
+      label = "Argumento " + position + " de printf";
       zone = "z-arg";
       showDec = true;
-    } else {
+    } else if (argCount && a === formatAddress) {
       label = "Argumento: formato";
+      zone = "z-arg";
+    } else if (argCount && a === printfReturnAddress) {
+      label = "Retorno de printf";
+      zone = "z-ret";
+    } else if (argCount && a === printfEbp) {
+      label = "EBP guardado por printf";
+      zone = "z-ebp";
+    } else {
+      label = "Área de llamada printf";
       zone = "z-arg";
     }
     const alloc = a >= state.st.regs.esp;

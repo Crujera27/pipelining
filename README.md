@@ -11,18 +11,27 @@ El simulador utiliza un sistema simplificado basado en un pipeline clásico de t
 - Interfaz: Bulma CSS y FontAwesome para el apartado visual.
 - Servidor: Cualquier servidor HTTP compatible con PHP (Nginx, Apache o el servidor integrado de PHP).
 
+## Lenguaje y Traducción
+
+Consulta la documentación específica para conocer el lenguaje admitido y su traducción a ensamblador:
+
+- [Lenguaje del simulador](./docs/lenguaje.md)
+- [Traducción a ensamblador](./docs/traduccion.md)
+
 ## Estructura de Archivos
 
-- `index.php`: Vista principal con los paneles de código, registros, pila y diagramas.
-- `css/`: Estilos del proyecto modularizados, centralizados en overrides.css.
-- `js/`: Lógica de la simulación en el cliente, con main.js como entrypoint.
-- `includes/pipelining/`: Scripts PHP que forman el motor de traducción y cálculo del pipeline.
+* `index.php`: Vista principal con los paneles de código, registros, pila y diagramas.
+* `css/`: Estilos del proyecto modularizados, centralizados en overrides.css.
+* `js/`: Lógica de la simulación en el cliente, con main.js como entrypoint.
+* `includes/pipelining/`: Scripts PHP que forman el motor de traducción y cálculo del pipeline.
 
 ## Despliegue en Local
 
 Lanzar el servidor integrado de PHP:
+
 ```bash
 php -S localhost:8000
+
 ```
 
 Abre http://localhost:8000 en el navegador.
@@ -38,5 +47,4 @@ Abre http://localhost:8000 en el navegador.
 
 ## Licencia
 
-Software Libre distribuido bajo la licencia [GNU AGPLv3](/LICENSE).
-
+Software Libre distribuido bajo la licencia [GNU AGPLv3](./LICENSE).

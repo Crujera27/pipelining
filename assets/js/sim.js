@@ -1,3 +1,20 @@
+/**
+ * Copyright (c) 2026 Ángel Crujera <me@crujera.net>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { state } from "./state.js";
 import { IDX } from "./config.js";
 import { esc, addrOf } from "./utils.js";
@@ -113,7 +130,7 @@ export function ctrlReason(i) {
     state.sched[i].bub +
     " ciclos." +
     (isCall
-      ? " El cuerpo de printf no se simula, solo se muestra el coste del vaciado."
+      ? " printf entra en su rutina interna, que recorre el formato y escribe la salida antes de retornar."
       : "")
   );
 }
@@ -133,6 +150,7 @@ export function resetSim(fwdChecked) {
     faultIdx: -1,
     faultMsg: "",
     out: [],
+    printf: null,
     chReg: new Set(),
     chMem: new Set(),
   };
@@ -160,7 +178,53 @@ function write(o, v) {
   else if (o.t === "m") wrMem(state.st.regs.ebp + o.o, v);
 }
 
-function run(e) {
+export function formatPrintf(format, args) {
+  let output = "";
+  for (let i = 0; i < format.length; i++) {
+    if (format[i] !== "%") {
+      output += format[i];
+      continue;
+    }
+    const spec = format[++i];
+    if (spec === "%") {
+      output += "%";
+      continue;
+    }
+    const value = args.shift();
+    switch (spec) {
+      case "d":
+      case "i":
+        output += String(value | 0);
+        break;
+      case "u":
+        output += String(value >>> 0);
+        break;
+      case "x":
+        output += (value >>> 0).toString(16);
+        break;
+      case "X":
+        output += (value >>> 0).toString(16).toUpperCase();
+        break;
+      case "c":
+        output += String.fromCharCode(value & 0xff);
+        break;
+      default:
+        throw new Error("Especificador de printf no compatible");
+    }
+  }
+  return { text: output, count: output.length };
+}
+
+function startPrintf(e, i) {
+  const returnIndex = i + 1 + e.runtimeLength;
+  const returnRow = state.prog.rows[state.prog.ins[returnIndex]];
+  const returnAddress = returnRow ? addrOf(returnRow) : 0;
+  setR("esp", state.st.regs.esp - 4);
+  wrMem(state.st.regs.esp, returnAddress);
+  state.st.printf = { format: e.format, argc: e.argc, args: [], result: null };
+}
+
+function run(e, i) {
   switch (e.op) {
     case "push":
       setR("esp", state.st.regs.esp - 4);
@@ -199,9 +263,47 @@ function run(e) {
       break;
     }
     case "call": {
-      const s = String(readMem(state.st.regs.esp + 4));
-      state.st.out.push(s);
-      setR("eax", s.length + 1);
+      if (e.target === "_printf") {
+        startPrintf(e, i);
+      }
+      break;
+    }
+    case "printf_scan": {
+      if (!state.st.printf) throw new Error("Rutina printf sin contexto de llamada");
+      const formatAddress = readMem(state.st.regs.ebp + 8);
+      const format = state.prog.meta.formats[String(formatAddress)];
+      if (format === undefined) throw new Error("Formato de printf no encontrado");
+      const args = [];
+      for (let n = 0; n < e.argc; n++) {
+        args.push(readMem(state.st.regs.ebp + 12 + 4 * n));
+      }
+      state.st.printf.format = format;
+      state.st.printf.args = args;
+      setR("ecx", e.argc);
+      break;
+    }
+    case "printf_format": {
+      if (!state.st.printf) throw new Error("Formateo printf sin contexto de llamada");
+      state.st.printf.result = formatPrintf(
+        state.st.printf.format,
+        [...state.st.printf.args],
+      );
+      setR("edx", state.st.printf.result.count);
+      break;
+    }
+    case "printf_write": {
+      if (!state.st.printf || !state.st.printf.result) {
+        throw new Error("Escritura printf sin resultado formateado");
+      }
+      state.st.out.push(state.st.printf.result.text);
+      setR("eax", state.st.printf.result.count);
+      break;
+    }
+    case "ret": {
+      const returnAddress = readMem(state.st.regs.esp);
+      setR("esp", state.st.regs.esp + 4);
+      state.st.printf = null;
+      state.st.returnAddress = returnAddress;
       break;
     }
     case "retn":
@@ -214,7 +316,7 @@ function run(e) {
 function commit(i) {
   state.st.retired = i;
   try {
-    run(state.prog.rows[state.prog.ins[i]].ex);
+    run(state.prog.rows[state.prog.ins[i]].ex, i);
   } catch (err) {
     if (err && err.div) {
       state.st.done = true;

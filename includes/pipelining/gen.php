@@ -1,4 +1,20 @@
 <?php
+// Copyright (c) 2026 Ángel Crujera <me@crujera.net>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 final class Gen
 {
     public array $rows = [];
@@ -161,42 +177,126 @@ final class Gen
         );
     }
 
-    public function emitPrint(array $s): void
+    public function emitPrintf(array $s): void
     {
         $src = 'Línea ' . $s['n'] . ': ' . $s['text'];
         $this->line('comment', '; ' . $s['text']);
-        $this->compute($s['e'], $src);
+        $args = $s['args'];
+        for ($i = count($args) - 1; $i >= 0; $i--) {
+            $this->compute($args[$i], $src);
+            $position = $i + 1;
+            $this->ins(
+                'push',
+                'eax',
+                1,
+                ['op' => 'push', 'a' => opReg('eax')],
+                "Apila el argumento $position de printf. ESP baja 4 bytes.",
+                $src
+            );
+        }
+        $formatLabel = 'a' . strtoupper(dechex($s['formatAddr']));
         $this->ins(
             'push',
-            'eax',
-            1,
-            ['op' => 'push', 'a' => opReg('eax')],
-            'Apila el valor a mostrar como último argumento de printf. ESP baja 4 bytes.',
-            $src
-        );
-        $this->ins(
-            'push',
-            'offset aD',
+            'offset ' . $formatLabel,
             5,
-            ['op' => 'push', 'a' => opImm(FMT_ADDR)],
-            'Apila la dirección de la cadena de formato "%d". ESP baja otros 4 bytes.',
+            ['op' => 'push', 'a' => opImm($s['formatAddr'])],
+            'Apila la dirección de la cadena de formato. ESP baja 4 bytes.',
             $src,
-            '"%d\n"'
+            json_encode($s['format'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
         $this->ins(
             'call',
             '_printf',
             5,
-            ['op' => 'call'],
-            'Llama a printf, que lee sus argumentos de la pila e imprime el valor. El simulador no detalla el interior de la función. EAX recibe el número de caracteres escritos.',
+            [
+                'op' => 'call',
+                'target' => '_printf',
+                'format' => $s['formatAddr'],
+                'argc' => count($args),
+                'runtimeLength' => 9,
+            ],
+            'Llama a la rutina interna de printf. La dirección de retorno se apila y la rutina continúa con su propio marco.',
             $src
         );
         $this->ins(
-            'add',
-            'esp, 8',
+            'push',
+            'ebp',
+            1,
+            ['op' => 'push', 'a' => opReg('ebp')],
+            'Prólogo de printf: guarda el EBP del llamador.',
+            $src
+        );
+        $this->ins(
+            'mov',
+            'ebp, esp',
+            2,
+            ['op' => 'mov', 'a' => opReg('ebp'), 'b' => opReg('esp')],
+            'printf establece su propio marco para acceder al formato y a los argumentos.',
+            $src
+        );
+        $this->ins(
+            'mov',
+            'eax, [ebp+8]',
             3,
-            ['op' => 'add', 'a' => opReg('esp'), 'b' => opImm(8)],
-            'Retira los dos argumentos de la pila. En la convención cdecl limpia el llamador.',
+            ['op' => 'mov', 'a' => opReg('eax'), 'b' => ['t' => 'm', 'o' => 8]],
+            'Lee desde la pila la dirección del formato recibida por printf.',
+            $src
+        );
+        $this->ins(
+            'scan',
+            'printf',
+            2,
+            ['op' => 'printf_scan', 'format' => $s['formatAddr'], 'argc' => count($args)],
+            'Recorre el formato y lee los argumentos variables desde la pila.',
+            $src
+        );
+        $this->ins(
+            'format',
+            'printf',
+            2,
+            ['op' => 'printf_format'],
+            'Convierte cada argumento según su especificador y prepara la cadena de salida.',
+            $src
+        );
+        $this->ins(
+            'write',
+            'stdout',
+            2,
+            ['op' => 'printf_write'],
+            'Escribe la cadena resultante en la consola y devuelve su longitud en EAX.',
+            $src
+        );
+        $this->ins(
+            'mov',
+            'esp, ebp',
+            2,
+            ['op' => 'mov', 'a' => opReg('esp'), 'b' => opReg('ebp')],
+            'printf libera su marco de pila.',
+            $src
+        );
+        $this->ins(
+            'pop',
+            'ebp',
+            1,
+            ['op' => 'pop', 'a' => opReg('ebp')],
+            'Restaura el EBP del llamador de printf.',
+            $src
+        );
+        $this->ins(
+            'ret',
+            '',
+            1,
+            ['op' => 'ret'],
+            'Retorna al código que llamó a printf y recupera la dirección de continuación.',
+            $src
+        );
+        $argBytes = 4 * (count($args) + 1);
+        $this->ins(
+            'add',
+            'esp, ' . $argBytes,
+            3,
+            ['op' => 'add', 'a' => opReg('esp'), 'b' => opImm($argBytes)],
+            'Retira los argumentos de la pila. En la convención cdecl limpia el llamador.',
             $src
         );
     }

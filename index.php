@@ -1,4 +1,20 @@
 <?php
+// Copyright (c) 2026 Ángel Crujera <me@crujera.net>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 require('includes/constantes.php');
 require('includes/helpers.php');
 require('includes/pipelining/pipelining.php');
@@ -49,10 +65,19 @@ require('includes/pipelining/pipelining.php');
                                 <textarea id="src" class="textarea mono" rows="9" spellcheck="false">a = 15
 b = 5
 c = a * b
-print c</textarea>
+printf "resultado=%d\n", c</textarea>
                             </div>
-                            <p class="help">Asignación de un valor o de una operación (+ - * /) y print de una variable
-                                o expresión. Las líneas que empiezan por # se ignoran.</p>
+                            <p class="help">Asignación de un valor u operación (+ - * /), y printf con formatos %d, %i, %u, %x, %X, %c y %%. También se admite print como alias de %d. Las líneas que empiezan por # se ignoran.</p>
+                            <div class="buttons are-small mt-2 mb-0">
+                                <a class="button is-light" href="https://github.com/Crujera27/pipelining/blob/main/docs/lenguaje.md" target="_blank" rel="noopener">
+                                    <span class="icon"><i class="fa-solid fa-book-open"></i></span>
+                                    <span>Guía del lenguaje</span>
+                                </a>
+                                <a class="button is-light" href="https://github.com/Crujera27/pipelining/blob/main/docs/traduccion.md" target="_blank" rel="noopener">
+                                    <span class="icon"><i class="fa-solid fa-arrow-right-arrow-left"></i></span>
+                                    <span>Guía de traducción</span>
+                                </a>
+                            </div>
                         </div>
                         <button id="btnTranslate" class="button is-link is-fullwidth">
                             <span class="icon"><i class="fa-solid fa-gears"></i></span>
