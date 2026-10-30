@@ -18,6 +18,7 @@
 import { state } from "./state.js";
 import { $ } from "./utils.js";
 import { resetSim } from "./sim.js";
+import { render } from "./render.js";
 import { stepCycle, stepInstr, stepToEnd, translate } from "./events.js";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("fwd").addEventListener("change", () => {
     if (state.prog) {
       resetSim($("fwd").checked);
+      render();
     }
   });
   document.addEventListener("keydown", (e) => {
