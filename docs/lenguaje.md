@@ -86,6 +86,30 @@ Es equivalente a:
 printf "%d\\n", resultado
 ```
 
+## Control de flujo
+
+Las condiciones comparan dos operandos enteros previamente definidos o literales de 32 bits con signo. Se admiten `==`, `!=`, `<`, `<=`, `>` y `>=`.
+
+Los bloques usan llaves y pueden anidarse. `else` es opcional y debe seguir a un bloque `if`:
+
+```text
+x = 0
+if x == 0 {
+	print 10
+} else {
+	print 20
+}
+
+while x < 3 {
+	x = x + 1
+	print x
+}
+```
+
+El simulador limita la ejecución a 10 000 instrucciones dinámicas. Esto evita que un `while` que nunca termina bloquee el navegador y produce un error visible en la simulación.
+
+El compilador rechaza también un `while` cuya condición depende de variables que no se modifican dentro del cuerpo, porque el bucle no puede terminar con el estado actual del lenguaje.
+
 ## Límites actuales
 
-El lenguaje no incluye cadenas como valores de variables, `%s`, paréntesis, funciones definidas por el usuario ni control de flujo. `printf` recibe formatos constantes y argumentos enteros calculados por el programa.
+El lenguaje no incluye cadenas como valores de variables, `%s`, paréntesis, operadores booleanos, `break`, `continue` ni funciones definidas por el usuario. `printf` recibe formatos constantes y argumentos enteros calculados por el programa.

@@ -21,4 +21,5 @@ export const state = {
   sched: [],
   schedNo: [],
   schedFw: [],
+  trace: [],
 };

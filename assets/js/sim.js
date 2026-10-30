@@ -20,14 +20,16 @@ import { IDX } from "./config.js";
 import { esc, addrOf } from "./utils.js";
 
 export function instrText(i) {
-  const r = state.prog.rows[state.prog.ins[i]];
+  const staticIndex = state.trace[i] ?? i;
+  const r = state.prog.rows[state.prog.ins[staticIndex]];
   return (r.mn + " " + r.ops).trim();
 }
 
-export function buildSched(fwd) {
+export function buildSched(fwd, trace = state.prog.ins.map((_, i) => i)) {
   const out = [];
   const lastW = {};
-  state.prog.ins.forEach((ri, i) => {
+  trace.forEach((staticIndex, i) => {
+    const ri = state.prog.ins[staticIndex];
     const hz = state.prog.rows[ri].hz;
     const prev = out[i - 1];
     let nat, if0, id0;
@@ -122,7 +124,8 @@ export function dataReason(i, fwdChecked) {
 
 export function ctrlReason(i) {
   const p = i - 1;
-  const isCall = state.prog.rows[state.prog.ins[p]].mn === "call";
+  const previousStaticIndex = state.trace[p] ?? p;
+  const isCall = state.prog.rows[state.prog.ins[previousStaticIndex]].mn === "call";
   return (
     'Tras "' +
     instrText(p) +
@@ -135,13 +138,11 @@ export function ctrlReason(i) {
   );
 }
 
-export function resetSim(fwdChecked) {
+function newRuntime() {
   const m = state.prog.meta;
-  state.schedNo = buildSched(false);
-  state.schedFw = buildSched(true);
-  state.sched = fwdChecked ? state.schedFw : state.schedNo;
-  state.st = {
+  const runtime = {
     regs: { eax: 0, ecx: 0, edx: 0, esp: m.esp0, ebp: m.callerEbp },
+    flags: { z: false, s: false },
     mem: new Map(),
     cyc: 0,
     retired: -1,
@@ -154,7 +155,79 @@ export function resetSim(fwdChecked) {
     chReg: new Set(),
     chMem: new Set(),
   };
-  state.st.mem.set(m.esp0, m.retAddr);
+  runtime.mem.set(m.esp0, m.retAddr);
+  return runtime;
+}
+
+function instructionTargets() {
+  const targets = {};
+  let next = null;
+  for (let i = state.prog.rows.length - 1; i >= 0; i--) {
+    const row = state.prog.rows[i];
+    if (row.t === "ins") {
+      next = state.prog.ins.indexOf(i);
+    } else if (row.t === "label" && row.x.endsWith(":")) {
+      targets[row.x.slice(0, -1)] = next;
+    }
+  }
+  return targets;
+}
+
+function branchTaken(mn) {
+  const { z, s } = state.st.flags;
+  if (mn === "je") return z;
+  if (mn === "jne") return !z;
+  if (mn === "jl") return s;
+  if (mn === "jle") return s || z;
+  if (mn === "jg") return !s && !z;
+  if (mn === "jge") return !s;
+  return true;
+}
+
+function buildTrace() {
+  const targets = instructionTargets();
+  const trace = [];
+  const limit = state.prog.meta.maxDynamicInstructions;
+  let pc = 0;
+  let fault = null;
+  while (pc >= 0 && pc < state.prog.ins.length && trace.length < limit) {
+    const staticIndex = pc;
+    const e = state.prog.rows[state.prog.ins[staticIndex]].ex;
+    trace.push(staticIndex);
+    try {
+      run(e, staticIndex);
+    } catch (err) {
+      fault = { staticIndex, message: err && err.div ? "Excepción: división entre cero (#DE)." : String(err) };
+      break;
+    }
+    if (e.op === "jmp" || ["je", "jne", "jl", "jle", "jg", "jge"].includes(e.op)) {
+      pc = branchTaken(e.op) ? targets[e.target] : pc + 1;
+    } else {
+      pc++;
+    }
+    if (state.st.done) break;
+  }
+  if (!fault && trace.length >= limit && !state.st.done) {
+    fault = { staticIndex: trace[trace.length - 1], message: "Ejecución detenida: se alcanzó el límite de instrucciones dinámicas." };
+  }
+  return { trace, fault };
+}
+
+export function resetSim(fwdChecked) {
+  const m = state.prog.meta;
+  state.st = { ...newRuntime() };
+  const result = buildTrace();
+  state.trace = result.trace;
+  state.st = newRuntime();
+  state.schedNo = buildSched(false, state.trace);
+  state.schedFw = buildSched(true, state.trace);
+  state.sched = fwdChecked ? state.schedFw : state.schedNo;
+  if (result.fault) {
+    state.st.fault = true;
+    state.st.done = true;
+    state.st.faultIdx = state.trace.indexOf(result.fault.staticIndex);
+    state.st.faultMsg = result.fault.message;
+  }
 }
 
 function val(o) {
@@ -251,6 +324,19 @@ function run(e, i) {
     case "xor":
       write(e.a, val(e.a) ^ val(e.b));
       break;
+    case "cmp": {
+      const result = (val(e.a) - val(e.b)) | 0;
+      state.st.flags = { z: result === 0, s: result < 0 };
+      break;
+    }
+    case "je":
+    case "jne":
+    case "jl":
+    case "jle":
+    case "jg":
+    case "jge":
+    case "jmp":
+      break;
     case "cdq":
       setR("edx", state.st.regs.eax < 0 ? -1 : 0);
       break;
@@ -316,7 +402,8 @@ function run(e, i) {
 function commit(i) {
   state.st.retired = i;
   try {
-    run(state.prog.rows[state.prog.ins[i]].ex, i);
+    const staticIndex = state.trace[i] ?? i;
+    run(state.prog.rows[state.prog.ins[staticIndex]].ex, staticIndex);
   } catch (err) {
     if (err && err.div) {
       state.st.done = true;
@@ -342,16 +429,16 @@ export function pcValue() {
   const m = state.prog.meta;
   const { st, sched } = state;
   if (st.fault) return addrOf(state.prog.rows[state.prog.ins[st.faultIdx]]);
-  if (st.cyc === 0) return addrOf(state.prog.rows[state.prog.ins[0]]);
+  if (st.cyc === 0) return addrOf(state.prog.rows[state.prog.ins[state.trace[0] ?? 0]]);
   for (let i = 0; i < sched.length; i++) {
     const x = stageAt(sched[i], st.cyc);
-    if (x && x.k === "IF") return addrOf(state.prog.rows[state.prog.ins[i]]);
+    if (x && x.k === "IF") return addrOf(state.prog.rows[state.prog.ins[state.trace[i]]]);
   }
   for (let i = 0; i < sched.length; i++) {
-    if (st.cyc < sched[i].if0) return addrOf(state.prog.rows[state.prog.ins[i]]);
+    if (st.cyc < sched[i].if0) return addrOf(state.prog.rows[state.prog.ins[state.trace[i]]]);
   }
   const last = sched.length - 1;
   return st.cyc > sched[last].mem
     ? m.retAddr
-    : addrOf(state.prog.rows[state.prog.ins[last]]) + 1;
+    : addrOf(state.prog.rows[state.prog.ins[state.trace[last]]]) + 1;
 }

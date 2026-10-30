@@ -18,12 +18,22 @@
 import { state } from "./state.js";
 import { $ } from "./utils.js";
 import { resetSim } from "./sim.js";
-import { stepCycle, stepInstr, translate } from "./events.js";
+import { stepCycle, stepInstr, stepToEnd, translate } from "./events.js";
 
 document.addEventListener("DOMContentLoaded", () => {
+  $("src").addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+
+    e.preventDefault();
+    const source = e.currentTarget;
+    const start = source.selectionStart;
+    const end = source.selectionEnd;
+    source.setRangeText("    ", start, end, "end");
+  });
   $("btnTranslate").addEventListener("click", translate);
   $("btnCycle").addEventListener("click", stepCycle);
   $("btnInstr").addEventListener("click", stepInstr);
+  $("btnEnd").addEventListener("click", stepToEnd);
   $("fwd").addEventListener("change", () => {
     if (state.prog) {
       resetSim($("fwd").checked);

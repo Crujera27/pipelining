@@ -38,6 +38,16 @@ export function stepInstr() {
   render();
 }
 
+export function stepToEnd() {
+  if (!state.prog || !state.st || state.st.done) return;
+  state.st.chReg.clear();
+  state.st.chMem.clear();
+  while (!state.st.done) {
+    tick();
+  }
+  render();
+}
+
 export async function translate() {
   const btn = $("btnTranslate");
   const box = $("errors");

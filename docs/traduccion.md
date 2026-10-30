@@ -5,8 +5,8 @@ El simulador transforma cada programa escrito en el lenguaje del proyecto en una
 ## Recorrido de traducción
 
 1. `index.php` recibe el código fuente desde el editor.
-2. `translate.php` separa las líneas, ignora comentarios y valida cada instrucción.
-3. `parser.php` convierte operandos, expresiones y formatos de `printf` en estructuras internas.
+2. `translate.php` normaliza bloques, ignora comentarios y coordina la validación del programa.
+3. `parser.php` convierte operandos, expresiones, condiciones y formatos de `printf` en estructuras internas.
 4. `Gen` genera filas de ensamblador con texto visible, descripción, operación ejecutable y datos de riesgos.
 5. `hazards.php` determina los registros leídos y escritos por cada instrucción.
 6. El navegador recibe las filas y la metadata en JSON.
@@ -74,6 +74,25 @@ add esp, 12
 El número usado en `add esp, 12` corresponde a tres valores de cuatro bytes: el formato y los dos argumentos.
 
 El simulador utiliza una rutina interna simplificada para `printf`: crea su marco, lee el formato y los argumentos, recorre los especificadores, prepara la salida, escribe en la consola y retorna al llamador. La limpieza de los argumentos continúa siendo responsabilidad del `add esp, ...` generado por el llamador.
+
+## Traducción de control de flujo
+
+Los bloques se convierten en etiquetas simbólicas y saltos Intel-like. Una comparación carga el operando izquierdo en `EAX` y genera `cmp eax, ...`. El salto condicional se invierte para saltar al bloque falso o a la salida del bucle:
+
+```text
+if x < 3 { ... }
+```
+
+```asm
+cmp eax, 3
+jge .Lif_false_1
+; cuerpo del if
+.Lif_false_1:
+```
+
+`while` coloca una etiqueta al principio, compara en cada visita y vuelve a saltar a esa etiqueta después del cuerpo. Las etiquetas visibles permanecen simbólicas; la simulación mantiene además el índice interno de la instrucción destino.
+
+El simulador construye una traza dinámica de las visitas a instrucciones. Por eso una misma fila estática del visor puede aparecer varias veces en el calendario del pipeline. Si se alcanza el límite de instrucciones dinámicas, se descartan las instrucciones posteriores y se muestra un error de simulación.
 
 ## Metadata generada
 

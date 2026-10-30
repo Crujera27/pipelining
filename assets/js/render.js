@@ -200,11 +200,19 @@ export function renderStack() {
 
 export function renderAsmState() {
   const { st, sched } = state;
-  state.prog.insEl.forEach((el, i) => {
+  state.prog.insEl.forEach((el, staticIndex) => {
     el.className = "asm-row";
-    const tag = state.prog.insStg[i];
-    const sq = st.fault && i > st.faultIdx;
-    const x = st.cyc > 0 && !sq ? stageAt(sched[i], st.cyc) : null;
+    const tag = state.prog.insStg[staticIndex];
+    let dynamicIndex = -1;
+    for (let i = 0; i < state.trace.length; i++) {
+      if (state.trace[i] !== staticIndex) continue;
+      const x = st.cyc > 0 && !(st.fault && i > st.faultIdx) ? stageAt(sched[i], st.cyc) : null;
+      if (x && x.k !== "bub") {
+        dynamicIndex = i;
+        break;
+      }
+    }
+    const x = dynamicIndex >= 0 ? stageAt(sched[dynamicIndex], st.cyc) : null;
     if (x && x.k !== "bub") {
       tag.textContent = x.k;
       tag.className =
@@ -214,8 +222,8 @@ export function renderAsmState() {
       tag.className = "stg";
     }
   });
-  if (st.fault) state.prog.insEl[st.faultIdx].classList.add("fault");
-  else if (st.retired >= 0) state.prog.insEl[st.retired].classList.add("cur");
+  if (st.fault) state.prog.insEl[state.trace[st.faultIdx]].classList.add("fault");
+  else if (st.retired >= 0) state.prog.insEl[state.trace[st.retired]].classList.add("cur");
 
   let target = null;
   if (st.cyc > 0) {
@@ -226,8 +234,10 @@ export function renderAsmState() {
         break;
       }
     }
-    if (!target)
-      target = state.prog.insEl[st.fault ? st.faultIdx : sched.length - 1];
+    if (!target) {
+      const dynamicIndex = st.fault ? st.faultIdx : sched.length - 1;
+      target = state.prog.insEl[state.trace[dynamicIndex]];
+    }
   }
   if (target) {
     const c = $("asm");
@@ -299,22 +309,76 @@ export function renderGantt() {
   const { st, sched } = state;
   const T = total(sched);
   const c = st.cyc;
+  const wrap = $("gantt");
+  const rowHeight = 25;
+  const headerHeight = 27;
+  const labelWidth = 240;
+  const columnWidth = 41.6;
+  const overscan = 4;
+  const scrollTop = wrap.scrollTop;
+  const scrollLeft = wrap.scrollLeft;
+  const viewportHeight = Math.max(wrap.clientHeight, Math.floor(window.innerHeight * 0.46));
+  const viewportWidth = Math.max(wrap.clientWidth, window.innerWidth);
+  const firstRow = Math.max(0, Math.floor((scrollTop - headerHeight) / rowHeight) - overscan);
+  const lastRow = Math.min(
+    sched.length,
+    Math.ceil((scrollTop + viewportHeight - headerHeight) / rowHeight) + overscan,
+  );
+  const firstColumn = Math.max(
+    1,
+    Math.floor((scrollLeft - labelWidth) / columnWidth) + 1 - overscan,
+  );
+  const lastColumn = Math.min(
+    T,
+    Math.ceil((scrollLeft + viewportWidth - labelWidth) / columnWidth) + overscan,
+  );
   let h =
-    '<table class="table is-narrow gantt"><thead><tr><th class="g-lab">Instrucción</th>';
-  for (let k = 1; k <= T; k++)
-    h += '<th class="g-c' + (k === c ? " g-now" : "") + '">' + k + "</th>";
-  h += "</tr></thead><tbody>";
-  sched.forEach((s, i) => {
-    const sq = st.fault && i > st.faultIdx;
+    '<div class="gantt-virtual" style="width:' +
+    (labelWidth + T * columnWidth) +
+    "px;height:" +
+    (headerHeight + sched.length * rowHeight) +
+    'px">';
+  h +=
+    '<div class="gantt-v-corner" style="left:' +
+    scrollLeft +
+    'px;top:' +
+    scrollTop +
+    'px">Instrucción</div>';
+  for (let k = firstColumn; k <= lastColumn; k++) {
     h +=
-      '<tr><td class="g-lab mono">' +
+      '<div class="gantt-v-header' +
+      (k === c ? " g-now" : "") +
+      '" style="left:' +
+      (labelWidth + (k - 1) * columnWidth) +
+      'px;top:' +
+      scrollTop +
+      'px;width:' +
+      columnWidth +
+      'px;height:' +
+      headerHeight +
+      'px">' +
+      k +
+      "</div>";
+  }
+  for (let i = firstRow; i < lastRow; i++) {
+    const s = sched[i];
+    const sq = st.fault && i > st.faultIdx;
+    const top = headerHeight + i * rowHeight;
+    h +=
+      '<div class="gantt-v-label mono" style="top:' +
+      top +
+      'px;left:' +
+      scrollLeft +
+      'px;height:' +
+      rowHeight +
+      'px">' +
       (i + 1) +
       ". " +
       esc(instrText(i)) +
-      "</td>";
-    for (let k = 1; k <= T; k++) {
+      "</div>";
+    for (let k = firstColumn; k <= lastColumn; k++) {
       let cell = "";
-      let cls = "g-c" + (k === c ? " g-now" : "");
+      let cls = "gantt-v-cell" + (k === c ? " g-now" : "");
       if (k <= c) {
         const x = stageAt(s, k);
         if (x) {
@@ -331,62 +395,117 @@ export function renderGantt() {
           }
         }
       }
-      h += '<td class="' + cls + '">' + cell + "</td>";
+      h +=
+        '<div class="' +
+        cls +
+        '" style="left:' +
+        (labelWidth + (k - 1) * columnWidth) +
+        'px;top:' +
+        top +
+        'px;width:' +
+        columnWidth +
+        'px;height:' +
+        rowHeight +
+        'px">' +
+        cell +
+        "</div>";
     }
-    h += "</tr>";
-  });
-  h += "</tbody></table>";
-  const wrap = $("gantt");
-  wrap.innerHTML = h;
-  const now = wrap.querySelector("th.g-now");
-  if (now)
-    wrap.scrollLeft = Math.max(0, now.offsetLeft - wrap.clientWidth * 0.6);
-  else wrap.scrollLeft = 0;
+  }
+  wrap.innerHTML = h + "</div>";
+  wrap.scrollTop = scrollTop;
+  wrap.scrollLeft = scrollLeft;
+  if (!wrap.__ganttVirtualScroll) {
+    let frame = 0;
+    wrap.__ganttVirtualScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        renderGantt();
+      });
+    };
+    wrap.addEventListener("scroll", wrap.__ganttVirtualScroll, { passive: true });
+  }
 }
 
 export function renderHaz() {
   const { st, sched } = state;
   const fwdChecked = $("fwd").checked;
   const range = (a, b) => (a === b ? String(a) : a + " a " + b);
+  const wrap = $("haz");
+  const rowHeight = 48;
+  const overscan = 4;
+  const scrollTop = wrap.__hazWindow ? wrap.__hazWindow.scrollTop : 0;
+  let hazardCount = 0;
+  for (const [i, s] of sched.entries()) {
+    if (st.fault && i > st.faultIdx) break;
+    if (s.bub > 0 && st.cyc >= s.nat) hazardCount++;
+    if (s.stall > 0 && st.cyc >= s.id0) hazardCount++;
+  }
+  if (!hazardCount) {
+    wrap.className = "is-size-7 has-text-grey";
+    wrap.innerHTML = '<span>Sin riesgos detectados hasta ahora.</span>';
+    return;
+  }
+  const visibleStart = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+  const visibleEnd = Math.min(
+    hazardCount,
+    Math.ceil((scrollTop + (wrap.clientHeight || 240)) / rowHeight) + overscan,
+  );
+  let hazardIndex = 0;
   let rows = "";
   sched.forEach((s, i) => {
     if (st.fault && i > st.faultIdx) return;
-    if (s.bub > 0 && st.cyc >= s.nat) {
+    const addRow = (cycles, kind, reason, count) => {
+      const current = hazardIndex++;
+      if (current < visibleStart || current >= visibleEnd) return;
       rows +=
-        "<tr><td>" +
-        range(s.nat, s.if0 - 1) +
-        '</td><td>Control</td><td class="mono">' +
+        '<div class="haz-v-row" style="top:' +
+        current * rowHeight +
+        'px;height:' +
+        rowHeight +
+        'px"><span>' +
+        cycles +
+        "</span><span>" +
+        kind +
+        '</span><span class="mono">' +
         esc(instrText(i)) +
-        "</td><td>" +
-        esc(ctrlReason(i)) +
-        "</td><td>" +
-        s.bub +
-        "</td></tr>";
-    }
-    if (s.stall > 0 && st.cyc >= s.id0) {
-      rows +=
-        "<tr><td>" +
-        range(s.id0, s.id1 - 1) +
-        '</td><td>Datos</td><td class="mono">' +
-        esc(instrText(i)) +
-        "</td><td>" +
-        esc(dataReason(i, fwdChecked)) +
-        "</td><td>" +
-        s.stall +
-        "</td></tr>";
-    }
+        "</span><span>" +
+        esc(reason) +
+        "</span><span>" +
+        count +
+        "</span></div>";
+    };
+    if (s.bub > 0 && st.cyc >= s.nat)
+      addRow(range(s.nat, s.if0 - 1), "Control", ctrlReason(i), s.bub);
+    if (s.stall > 0 && st.cyc >= s.id0)
+      addRow(range(s.id0, s.id1 - 1), "Datos", dataReason(i, fwdChecked), s.stall);
   });
-  $("haz").className = "";
-  $("haz").innerHTML = rows
-    ? '<table class="table is-narrow is-fullwidth is-size-7 mb-0"><thead><tr><th>Ciclos</th><th>Tipo</th><th>Instrucción</th><th>Causa</th><th>Burbujas</th></tr></thead><tbody>' +
-      rows +
-      "</tbody></table>"
-    : '<span class="has-text-grey is-size-7">Sin riesgos detectados hasta ahora.</span>';
+  wrap.className = "haz-window is-size-7";
+  wrap.innerHTML =
+    '<div class="haz-v-head"><span>Ciclos</span><span>Tipo</span><span>Instrucción</span><span>Causa</span><span>Burbujas</span></div>' +
+    '<div class="haz-v-scroll"><div class="haz-v-content" style="height:' +
+    hazardCount * rowHeight +
+    'px">' +
+    rows +
+    "</div></div>";
+  wrap.__hazWindow = wrap.querySelector(".haz-v-scroll");
+  wrap.__hazWindow.scrollTop = scrollTop;
+  if (!wrap.__hazVirtualScroll) {
+    let frame = 0;
+    wrap.__hazVirtualScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        renderHaz();
+      });
+    };
+  }
+  wrap.__hazWindow.addEventListener("scroll", wrap.__hazVirtualScroll, { passive: true });
 }
 
 export function renderStats() {
   const { st, sched, schedNo, schedFw, prog } = state;
-  const N = prog.ins.length;
+  const N = state.trace.length;
   const T = total(sched);
   const sum = (sch, k) => sch.reduce((a, s) => a + s[k], 0);
   const fwd = $("fwd").checked;
@@ -497,4 +616,5 @@ export function render() {
   renderConsole();
   $("btnCycle").disabled = state.st.done;
   $("btnInstr").disabled = state.st.done;
+  $("btnEnd").disabled = state.st.done;
 }

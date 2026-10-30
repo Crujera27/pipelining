@@ -69,6 +69,23 @@ function hazardInfo(array $ex): array
             $m = opReads($b, $reads);
             $writes[$a['r']] = $m ? 'mem' : 'alu';
             break;
+        case 'cmp':
+            opReads($a, $reads);
+            opReads($b, $reads);
+            $writes['eflags'] = 'alu';
+            break;
+        case 'je':
+        case 'jne':
+        case 'jl':
+        case 'jle':
+        case 'jg':
+        case 'jge':
+            $reads['eflags'] = true;
+            $kind = 'ctrl';
+            break;
+        case 'jmp':
+            $kind = 'ctrl';
+            break;
         case 'imul':
             opReads($b, $reads);
             $m = opReads($c, $reads);

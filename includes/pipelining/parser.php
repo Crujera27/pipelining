@@ -50,6 +50,19 @@ function parseExpr(string $s, array $defined, int $line): array
     throw new InvalidArgumentException("Línea $line: expresión no válida '$s'. Se admite un valor o una operación con + - * /");
 }
 
+function parseCondition(string $s, array $defined, int $line): array
+{
+    $tok = '(-?\d+|[A-Za-z_]\w*)';
+    if (!preg_match('/^\s*' . $tok . '\s*(==|!=|<=|>=|<|>)\s*' . $tok . '\s*$/', $s, $m)) {
+        throw new InvalidArgumentException("Línea $line: condición no válida '$s'. Se admite una comparación entre dos valores");
+    }
+    return [
+        'l' => parseOperand($m[1], $defined, $line),
+        'op' => $m[2],
+        'r' => parseOperand($m[3], $defined, $line),
+    ];
+}
+
 function parseFormatLiteral(string $literal, int $line): string
 {
     $body = substr($literal, 1, -1);

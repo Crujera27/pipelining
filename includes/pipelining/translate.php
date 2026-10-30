@@ -15,6 +15,129 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+function parseSimpleStatement(string $line, int $n, array &$vars): array
+{
+    if (preg_match('/^([A-Za-z_]\w*)\s*=\s*(.+)$/', $line, $m)) {
+        $name = $m[1];
+        if (strtolower($name) === 'print') {
+            throw new InvalidArgumentException("Línea $n: 'print' es una palabra reservada");
+        }
+        $e = parseExpr($m[2], $vars, $n);
+        if (!isset($vars[$name])) {
+            if (count($vars) >= MAX_VARS) {
+                throw new InvalidArgumentException("Línea $n: se admiten como máximo " . MAX_VARS . ' variables');
+            }
+            $vars[$name] = 4 * (count($vars) + 1);
+        }
+        return ['k' => 'assign', 'name' => $name, 'e' => $e, 'text' => $line, 'n' => $n];
+    }
+    if (preg_match('/^print\s+(.+)$/i', $line, $m)) {
+        $e = parseExpr($m[1], $vars, $n);
+        return ['k' => 'printf', 'format' => "%d\n", 'args' => [$e], 'text' => $line, 'n' => $n];
+    }
+    if (preg_match('/^printf\s+(.+)$/i', $line, $m)) {
+        $p = parsePrintf($m[1], $vars, $n);
+        return ['k' => 'printf', ...$p, 'text' => $line, 'n' => $n];
+    }
+    throw new InvalidArgumentException("Línea $n: instrucción no reconocida '$line'");
+}
+
+function parseBlock(array $lines, int &$index, array &$vars, bool $nested = false): array
+{
+    $stmts = [];
+    while ($index < count($lines)) {
+        $line = trim($lines[$index]);
+        $n = $index + 1;
+        $index++;
+        if ($line === '' || $line[0] === '#') {
+            continue;
+        }
+        if ($line === '}') {
+            if (!$nested) {
+                throw new InvalidArgumentException("Línea $n: '}' no tiene un bloque abierto");
+            }
+            return $stmts;
+        }
+        if (preg_match('/^(if|while)\s+(.+)\s*\{$/i', $line, $m)) {
+            $condition = parseCondition($m[2], $vars, $n);
+            $body = parseBlock($lines, $index, $vars, true);
+            $node = ['k' => strtolower($m[1]), 'condition' => $condition, 'body' => $body, 'text' => $line, 'n' => $n];
+            if (strtolower($m[1]) === 'if' && $index < count($lines) && preg_match('/^else\s*\{$/i', trim($lines[$index]))) {
+                $index++;
+                $node['else'] = parseBlock($lines, $index, $vars, true);
+            } elseif ($index < count($lines) && preg_match('/^else\b/i', trim($lines[$index]))) {
+                throw new InvalidArgumentException('Línea ' . ($index + 1) . ": 'else' solo puede seguir a un bloque if");
+            }
+            $stmts[] = $node;
+            continue;
+        }
+        if (preg_match('/^else\b/i', $line)) {
+            throw new InvalidArgumentException("Línea $n: 'else' solo puede seguir a un bloque if");
+        }
+        $stmts[] = parseSimpleStatement($line, $n, $vars);
+    }
+    if ($nested) {
+        throw new InvalidArgumentException('Falta cerrar un bloque con }');
+    }
+    return $stmts;
+}
+
+function conditionVariables(array $condition): array
+{
+    $vars = [];
+    foreach ([$condition['l'], $condition['r']] as $operand) {
+        if ($operand['k'] === 'var') {
+            $vars[$operand['name']] = true;
+        }
+    }
+    return array_keys($vars);
+}
+
+function assignedVariables(array $stmts): array
+{
+    $assigned = [];
+    foreach ($stmts as $stmt) {
+        if ($stmt['k'] === 'assign') {
+            $assigned[$stmt['name']] = true;
+            continue;
+        }
+        if (!in_array($stmt['k'], ['if', 'while'], true)) {
+            continue;
+        }
+        foreach (assignedVariables($stmt['body']) as $name) {
+            $assigned[$name] = true;
+        }
+        if (isset($stmt['else'])) {
+            foreach (assignedVariables($stmt['else']) as $name) {
+                $assigned[$name] = true;
+            }
+        }
+    }
+    return array_keys($assigned);
+}
+
+function validateControlFlow(array $stmts): array
+{
+    $errors = [];
+    foreach ($stmts as $stmt) {
+        if (!in_array($stmt['k'], ['if', 'while'], true)) {
+            continue;
+        }
+        if ($stmt['k'] === 'while') {
+            $conditionVars = conditionVariables($stmt['condition']);
+            $assigned = assignedVariables($stmt['body']);
+            if (!array_intersect($conditionVars, $assigned)) {
+                $errors[] = "Línea {$stmt['n']}: Ejecución detenida: se alcanzó el límite de instrucciones dinámicas.";
+            }
+        }
+        $errors = [...$errors, ...validateControlFlow($stmt['body'])];
+        if (isset($stmt['else'])) {
+            $errors = [...$errors, ...validateControlFlow($stmt['else'])];
+        }
+    }
+    return $errors;
+}
+
 function translate(string $code): array
 {
     if (strlen($code) > 4000) {
@@ -24,39 +147,14 @@ function translate(string $code): array
     $errors = [];
     $stmts = [];
     $vars = [];
+    $index = 0;
 
-    foreach (preg_split('/\R/', $code) as $i => $raw) {
-        $line = trim($raw);
-        $n = $i + 1;
-        if ($line === '' || $line[0] === '#') {
-            continue;
-        }
-        try {
-            if (preg_match('/^([A-Za-z_]\w*)\s*=\s*(.+)$/', $line, $m)) {
-                $name = $m[1];
-                if (strtolower($name) === 'print') {
-                    throw new InvalidArgumentException("Línea $n: 'print' es una palabra reservada");
-                }
-                $e = parseExpr($m[2], $vars, $n);
-                if (!isset($vars[$name])) {
-                    if (count($vars) >= MAX_VARS) {
-                        throw new InvalidArgumentException("Línea $n: se admiten como máximo " . MAX_VARS . ' variables');
-                    }
-                    $vars[$name] = 4 * (count($vars) + 1);
-                }
-                $stmts[] = ['k' => 'assign', 'name' => $name, 'e' => $e, 'text' => $line, 'n' => $n];
-            } elseif (preg_match('/^print\s+(.+)$/i', $line, $m)) {
-                $e = parseExpr($m[1], $vars, $n);
-                $stmts[] = ['k' => 'printf', 'format' => "%d\n", 'args' => [$e], 'text' => $line, 'n' => $n];
-            } elseif (preg_match('/^printf\s+(.+)$/i', $line, $m)) {
-                $p = parsePrintf($m[1], $vars, $n);
-                $stmts[] = ['k' => 'printf', ...$p, 'text' => $line, 'n' => $n];
-            } else {
-                throw new InvalidArgumentException("Línea $n: instrucción no reconocida '$line'");
-            }
-        } catch (InvalidArgumentException $ex) {
-            $errors[] = $ex->getMessage();
-        }
+    try {
+        $normalizedCode = preg_replace('/}\s*else\s*{/', "}\nelse {", $code);
+        $stmts = parseBlock(preg_split('/\R/', $normalizedCode), $index, $vars);
+        $errors = [...$errors, ...validateControlFlow($stmts)];
+    } catch (InvalidArgumentException $ex) {
+        $errors[] = $ex->getMessage();
     }
 
     if (!$errors && !$stmts) {
@@ -67,24 +165,32 @@ function translate(string $code): array
     }
 
     $frame = 4 * count($vars);
-    $hasPrint = count(array_filter($stmts, fn(array $s): bool => $s['k'] === 'printf')) > 0;
+    $hasPrint = false;
     $formats = [];
     $formatAddresses = [];
     $nextFormatAddress = FMT_ADDR;
     $maxPrintfArgs = 0;
-    foreach ($stmts as &$s) {
-        if ($s['k'] !== 'printf') {
-            continue;
+    $prepareStatements = function (array &$items) use (&$prepareStatements, &$hasPrint, &$formats, &$formatAddresses, &$nextFormatAddress, &$maxPrintfArgs): void {
+        foreach ($items as &$s) {
+            if ($s['k'] === 'printf') {
+                $hasPrint = true;
+                $maxPrintfArgs = max($maxPrintfArgs, count($s['args']));
+                if (!isset($formatAddresses[$s['format']])) {
+                    $formatAddresses[$s['format']] = $nextFormatAddress;
+                    $formats[(string)$nextFormatAddress] = $s['format'];
+                    $nextFormatAddress += 0x100;
+                }
+                $s['formatAddr'] = $formatAddresses[$s['format']];
+            } elseif (in_array($s['k'], ['if', 'while'], true)) {
+                $prepareStatements($s['body']);
+                if (isset($s['else'])) {
+                    $prepareStatements($s['else']);
+                }
+            }
         }
-        $maxPrintfArgs = max($maxPrintfArgs, count($s['args']));
-        if (!isset($formatAddresses[$s['format']])) {
-            $formatAddresses[$s['format']] = $nextFormatAddress;
-            $formats[(string)$nextFormatAddress] = $s['format'];
-            $nextFormatAddress += 0x100;
-        }
-        $s['formatAddr'] = $formatAddresses[$s['format']];
-    }
-    unset($s);
+        unset($s);
+    };
+    $prepareStatements($stmts);
 
     $g = new Gen($vars);
     $g->line('comment', '; int __cdecl main()');
@@ -107,13 +213,7 @@ function translate(string $code): array
             "Reserva $frame bytes (4 por variable) en la pila moviendo ESP hacia direcciones menores.", $pro);
     }
 
-    foreach ($stmts as $s) {
-        if ($s['k'] === 'assign') {
-            $g->emitAssign($s);
-        } else {
-            $g->emitPrintf($s);
-        }
-    }
+    $g->emitBlockStatements($stmts);
 
     $epi = 'Epílogo de la función';
     $g->line('comment', '; return 0');
@@ -147,6 +247,7 @@ function translate(string $code): array
             'frame' => $frame,
             'hasPrint' => $hasPrint,
             'maxPrintfArgs' => $maxPrintfArgs,
+            'maxDynamicInstructions' => constant('MAX_DYNAMIC_INSTRUCTIONS'),
             'formats' => $formats,
             'vars' => $varList,
         ],

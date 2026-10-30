@@ -103,6 +103,10 @@ printf "resultado=%d\n", c</textarea>
                                 <span class="icon"><i class="fa-solid fa-forward-fast"></i></span>
                                 <span>Hasta la siguiente retirada</span>
                             </button>
+                            <button id="btnEnd" class="button is-warning" disabled>
+                                <span class="icon"><i class="fa-solid fa-angles-right"></i></span>
+                                <span>Ir al final</span>
+                            </button>
                         </div>
                         <div class="field">
                             <label class="checkbox">
@@ -150,6 +154,7 @@ printf "resultado=%d\n", c</textarea>
                     </header>
                     <div id="asm" class="asm"><span class="ph">El desensamblado aparecerá al compilar el código.</span>
                     </div>
+                    <p class="help px-3 pb-3 mb-0">Consulta el <a href="https://github.com/Crujera27/pipelining/blob/main/docs/instrucciones.md" target="_blank" rel="noopener">significado de las instrucciones</a></p>
                 </div>
             </div>
 

@@ -23,6 +23,11 @@ body {
   font-family: Consolas, "Courier New", monospace;
 }
 
+#src {
+  min-height: 12rem;
+  resize: vertical;
+}
+
 .table td,
 .table th {
   vertical-align: middle;

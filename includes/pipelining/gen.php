@@ -20,6 +20,7 @@ final class Gen
     public array $rows = [];
     public int $addr = TEXT_BASE;
     private array $byOff;
+    private int $labelSeq = 0;
 
     public function __construct(private array $vars)
     {
@@ -45,6 +46,91 @@ final class Gen
             's' => $src,
         ];
         $this->addr += $size;
+    }
+
+    public function label(string $name): void
+    {
+        $this->line('label', $name . ':');
+    }
+
+    private function newLabel(string $prefix): string
+    {
+        return '.L' . $prefix . (++$this->labelSeq);
+    }
+
+    private function emitCondition(array $condition, string $src): void
+    {
+        $this->loadEax($condition['l'], $src);
+        $right = $condition['r'];
+        $isImm = $right['k'] === 'imm';
+        $n = $isImm ? 0 : $this->vars[$right['name']];
+        $operand = $isImm ? opImm($right['v']) : opMem($n);
+        $text = $isImm ? hexImm($right['v']) : memText($n);
+        $this->ins(
+            'cmp',
+            'eax, ' . $text,
+            $isImm ? (fits8($right['v']) ? 3 : 5) : 2 + dispSize($n),
+            ['op' => 'cmp', 'a' => opReg('eax'), 'b' => $operand],
+            'Compara EAX con ' . $this->describe($right) . ' y actualiza las banderas.',
+            $src
+        );
+    }
+
+    private function emitJump(string $mn, string $target, string $src): void
+    {
+        $this->ins(
+            $mn,
+            $target,
+            2,
+            ['op' => $mn, 'target' => $target],
+            'Salta a ' . $target . ($mn === 'jmp' ? '.' : ' si la comparación cumple la condición.'),
+            $src
+        );
+    }
+
+    private function emitBlock(array $stmts): void
+    {
+        foreach ($stmts as $s) {
+            if ($s['k'] === 'assign') {
+                $this->emitAssign($s);
+            } elseif ($s['k'] === 'printf') {
+                $this->emitPrintf($s);
+            } elseif ($s['k'] === 'if') {
+                $src = 'Línea ' . $s['n'] . ': ' . $s['text'];
+                $false = $this->newLabel('if_false_');
+                $end = $this->newLabel('if_end_');
+                $this->line('comment', '; ' . $s['text']);
+                $this->emitCondition($s['condition'], $src);
+                $falseJump = ['==' => 'jne', '!=' => 'je', '<' => 'jge', '<=' => 'jg', '>' => 'jle', '>=' => 'jl'][$s['condition']['op']];
+                $this->emitJump($falseJump, $false, $src);
+                $this->emitBlock($s['body']);
+                if (isset($s['else'])) {
+                    $this->emitJump('jmp', $end, $src);
+                }
+                $this->label($false);
+                if (isset($s['else'])) {
+                    $this->emitBlock($s['else']);
+                    $this->label($end);
+                }
+            } elseif ($s['k'] === 'while') {
+                $src = 'Línea ' . $s['n'] . ': ' . $s['text'];
+                $header = $this->newLabel('while_');
+                $end = $this->newLabel('while_end_');
+                $this->label($header);
+                $this->line('comment', '; ' . $s['text']);
+                $this->emitCondition($s['condition'], $src);
+                $falseJump = ['==' => 'jne', '!=' => 'je', '<' => 'jge', '<=' => 'jg', '>' => 'jle', '>=' => 'jl'][$s['condition']['op']];
+                $this->emitJump($falseJump, $end, $src);
+                $this->emitBlock($s['body']);
+                $this->emitJump('jmp', $header, $src);
+                $this->label($end);
+            }
+        }
+    }
+
+    public function emitBlockStatements(array $stmts): void
+    {
+        $this->emitBlock($stmts);
     }
 
     private function nameOf(int $n): string
