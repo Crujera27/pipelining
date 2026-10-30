@@ -48,3 +48,7 @@ Abre http://localhost:8000 en el navegador.
 ## Licencia
 
 Software Libre distribuido bajo la licencia [GNU AGPLv3](./LICENSE).
+
+## Software de terceros
+
+Incluye [BulmaCSS 1.0.4](./assets/css/external/bulma.min.css), copyright (c) 2023 Jeremy Thomas, bajo [licencia MIT](./assets/css/external/BULMA-LICENSE).
